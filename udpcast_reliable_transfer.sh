@@ -56,7 +56,6 @@ Options:
     -g, --group NAME        Ansible group name (default: $GROUP_NAME)
     -p, --port PORT         UDP port base (default: $UDP_PORT_BASE)
     -b, --bandwidth RATE    Max bandwidth (e.g., 800m for 800Mbps)
-    -c, --compression       Enable compression (gzip)
     -d, --dry-run          Show what would be done without executing
     -t, --timeout SECONDS  Transfer timeout (default: $TRANSFER_TIMEOUT)
     -l, --log-dir DIR      Log directory (default: $LOG_DIR)
@@ -65,7 +64,7 @@ Options:
 
 Examples:
     $SCRIPT_NAME /path/to/system.img
-    $SCRIPT_NAME -b 900m -c /path/to/backup.tar
+    $SCRIPT_NAME -b 900m /path/to/backup.tar
     $SCRIPT_NAME -i /custom/inventory -g servers disk_image.dd
 
 EOF
@@ -73,7 +72,6 @@ EOF
 
 # Parse command line arguments
 BANDWIDTH="900m"  # Conservative for gigabit (leaves headroom)
-USE_COMPRESSION=false
 DRY_RUN=false
 VERBOSE=false
 IMAGE_FILE=""
@@ -95,10 +93,6 @@ while [[ $# -gt 0 ]]; do
         -b|--bandwidth)
             BANDWIDTH="$2"
             shift 2
-            ;;
-        -c|--compression)
-            USE_COMPRESSION=true
-            shift
             ;;
         -d|--dry-run)
             DRY_RUN=true
@@ -282,11 +276,6 @@ start_remote_receiver() {
     receiver_cmd+=" --receive-timeout $TRANSFER_TIMEOUT"
     receiver_cmd+=" --sync"
     
-    # Add compression if enabled
-    if [[ "$USE_COMPRESSION" == true ]]; then
-        receiver_cmd+=" --pipe 'gzip -dc'"
-    fi
-    
     # Add logging
     receiver_cmd+=" --log '/tmp/udp-receiver-$host.log'"
     
@@ -363,11 +352,6 @@ start_sender() {
     sender_cmd+=" --retries-until-drop 10"
     sender_cmd+=" --slice-size 256"  # Optimized for gigabit
     sender_cmd+=" --nokbd"
-    
-    # Add compression if enabled
-    if [[ "$USE_COMPRESSION" == true ]]; then
-        sender_cmd+=" --pipe 'gzip -1 -c'"
-    fi
     
     # Add logging if log directory is available
     if [[ -n "$LOG_DIR" && -w "$LOG_DIR" ]]; then
