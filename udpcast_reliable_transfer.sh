@@ -276,7 +276,6 @@ start_remote_receiver() {
     local receiver_cmd="udp-receiver"
     receiver_cmd+=" --portbase $port_base"
     receiver_cmd+=" --interface br0"
-    receiver_cmd+=" --full-duplex"
     receiver_cmd+=" --file '$image_file'"
     receiver_cmd+=" --stat-period 5"
     receiver_cmd+=" --start-timeout $TRANSFER_TIMEOUT"
