@@ -277,7 +277,7 @@ start_remote_receiver() {
     receiver_cmd+=" --portbase $port_base"
     receiver_cmd+=" --interface br0"
     receiver_cmd+=" --file '$image_file'"
-    receiver_cmd+=" --stat-period 5"
+    receiver_cmd+=" --stat-period 5000"
     receiver_cmd+=" --start-timeout $TRANSFER_TIMEOUT"
     receiver_cmd+=" --receive-timeout $TRANSFER_TIMEOUT"
     receiver_cmd+=" --sync"
@@ -360,10 +360,8 @@ start_sender() {
     sender_cmd+=" --min-receivers $num_receivers"
     sender_cmd+=" --min-wait 10"
     sender_cmd+=" --max-wait 60"
-    sender_cmd+=" --fec 16x32"  # Strong FEC for reliability
     sender_cmd+=" --retries-until-drop 10"
-    sender_cmd+=" --stat-period 5"
-    sender_cmd+=" --default-slice-size 256"  # Optimized for gigabit
+    sender_cmd+=" --slice-size 256"  # Optimized for gigabit
     sender_cmd+=" --nokbd"
     
     # Add compression if enabled
