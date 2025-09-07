@@ -497,6 +497,32 @@ main() {
     if start_sender "$IMAGE_FILE" "${#successful_receivers[@]}" "$UDP_PORT_BASE"; then
         success "Transfer completed successfully to ${#successful_receivers[@]} hosts"
         
+        # Verify transfer integrity by comparing file sizes
+        info "Verifying transfer integrity..."
+        local source_size
+        source_size=$(stat -f%z "$IMAGE_FILE" 2>/dev/null || stat -c%s "$IMAGE_FILE" 2>/dev/null)
+        
+        local all_verified=true
+        for host in "${successful_receivers[@]}"; do
+            local remote_size
+            if remote_size=$(ssh -o ConnectTimeout="$SSH_TIMEOUT" "$host" "stat -f%z '$IMAGE_FILE' 2>/dev/null || stat -c%s '$IMAGE_FILE' 2>/dev/null" 2>/dev/null); then
+                if [[ "$source_size" == "$remote_size" ]]; then
+                    success "File size verification passed for $host: $remote_size bytes"
+                else
+                    error "File size mismatch on $host! Source: $source_size bytes, Remote: $remote_size bytes"
+                    all_verified=false
+                fi
+            else
+                error "Could not verify file size on $host"
+                all_verified=false
+            fi
+        done
+        
+        if [[ "$all_verified" == false ]]; then
+            error "Transfer verification failed! Files may be corrupted."
+            return 1
+        fi
+        
         # Show transfer statistics
         if [[ -n "$LOG_DIR" && -f "$LOG_DIR/udp-sender.log" ]]; then
             info "Transfer statistics:"
