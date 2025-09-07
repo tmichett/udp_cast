@@ -8,7 +8,7 @@ set -euo pipefail
 
 # Configuration
 SCRIPT_NAME="$(basename "$0")"
-LOG_DIR="/var/log/udpcast"
+LOG_DIR="${LOG_DIR:-$HOME/.udpcast/logs}"  # Default to user directory, allow override
 INVENTORY_FILE="/etc/ansible/inventory/foundation"
 GROUP_NAME="Foundation"
 UDP_PORT_BASE=9000
@@ -27,7 +27,12 @@ NC='\033[0m' # No Color
 log() {
     local level=$1
     shift
-    echo -e "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $*" | tee -a "$LOG_DIR/$SCRIPT_NAME.log"
+    local message="[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $*"
+    echo -e "$message"
+    # Only log to file if LOG_DIR is available
+    if [[ -n "$LOG_DIR" && -w "$LOG_DIR" ]]; then
+        echo -e "$message" >> "$LOG_DIR/$SCRIPT_NAME.log"
+    fi
 }
 
 info() { log "${BLUE}INFO${NC}" "$@"; }
@@ -54,6 +59,7 @@ Options:
     -c, --compression       Enable compression (gzip)
     -d, --dry-run          Show what would be done without executing
     -t, --timeout SECONDS  Transfer timeout (default: $TRANSFER_TIMEOUT)
+    -l, --log-dir DIR      Log directory (default: $LOG_DIR)
     -v, --verbose          Verbose output
     -h, --help             Show this help
 
@@ -102,6 +108,10 @@ while [[ $# -gt 0 ]]; do
             TRANSFER_TIMEOUT="$2"
             shift 2
             ;;
+        -l|--log-dir)
+            LOG_DIR="$2"
+            shift 2
+            ;;
         -v|--verbose)
             VERBOSE=true
             shift
@@ -140,8 +150,16 @@ if [[ ! -f "$IMAGE_FILE" ]]; then
     exit 1
 fi
 
-# Create log directory
-mkdir -p "$LOG_DIR"
+# Create log directory with error handling
+if ! mkdir -p "$LOG_DIR" 2>/dev/null; then
+    # If we can't create the specified log directory, fall back to a temp directory
+    LOG_DIR="/tmp/udpcast-$$"
+    warn "Could not create log directory, using temporary directory: $LOG_DIR"
+    if ! mkdir -p "$LOG_DIR" 2>/dev/null; then
+        error "Could not create any log directory. Logging will be limited."
+        LOG_DIR=""
+    fi
+fi
 
 info "Starting UDP Cast reliable transfer"
 info "Image file: $IMAGE_FILE"
@@ -161,7 +179,7 @@ get_foundation_hosts() {
     
     # Try using ansible-inventory first (most reliable)
     if command -v ansible-inventory >/dev/null 2>&1; then
-        info "Using ansible-inventory to parse hosts"
+        echo "Using ansible-inventory to parse hosts" >&2  # Send to stderr
         local json_output
         if json_output=$(ansible-inventory -i "$inventory_file" --list 2>/dev/null); then
             # Extract hosts from JSON output
@@ -186,7 +204,7 @@ except Exception as e:
     
     # Fallback: manual parsing of INI-style inventory
     if [[ ${#hosts[@]} -eq 0 ]]; then
-        info "Falling back to manual inventory parsing"
+        echo "Falling back to manual inventory parsing" >&2  # Send to stderr
         local in_group=false
         while IFS= read -r line; do
             line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')  # trim whitespace
@@ -219,11 +237,13 @@ except Exception as e:
         return 1
     fi
     
-    info "Found ${#hosts[@]} hosts in group '$group_name':"
-    printf '%s\n' "${hosts[@]}" | sed 's/^/  - /'
-    
-    # Return hosts via stdout
-    printf '%s\n' "${hosts[@]}"
+    if [[ ${#hosts[@]} -gt 0 ]]; then
+        echo "Found ${#hosts[@]} hosts in group '$group_name':" >&2
+        printf '%s\n' "${hosts[@]}" | sed 's/^/  - /' >&2  # Send to stderr to avoid mixing with return data
+        
+        # Return hosts via stdout (clean data only)
+        printf '%s\n' "${hosts[@]}"
+    fi
 }
 
 # Function to test SSH connectivity
@@ -329,8 +349,10 @@ start_sender() {
         sender_cmd+=" --pipe 'gzip -1 -c'"
     fi
     
-    # Add logging
-    sender_cmd+=" --log '$LOG_DIR/udp-sender.log'"
+    # Add logging if log directory is available
+    if [[ -n "$LOG_DIR" && -w "$LOG_DIR" ]]; then
+        sender_cmd+=" --log '$LOG_DIR/udp-sender.log'"
+    fi
     
     if [[ "$DRY_RUN" == true ]]; then
         info "DRY RUN: Would execute: $sender_cmd"
@@ -376,10 +398,13 @@ main() {
     # Check if inventory file exists, create example if not
     if [[ ! -f "$INVENTORY_FILE" ]]; then
         warn "Inventory file not found: $INVENTORY_FILE"
-        local example_file="$(dirname "$INVENTORY_FILE")/foundation.example"
-        mkdir -p "$(dirname "$INVENTORY_FILE")" 2>/dev/null || true
-        create_example_inventory "$example_file"
-        error "Please create the inventory file at $INVENTORY_FILE (see example: $example_file)"
+        local example_file="./foundation_inventory.example"
+        # Try to create the example in the working directory instead
+        if [[ -f "foundation_inventory.example" ]]; then
+            example_file="foundation_inventory.example"
+        fi
+        error "Please create the inventory file at $INVENTORY_FILE"
+        info "See example inventory format in: $example_file"
         return 1
     fi
     
@@ -453,7 +478,7 @@ main() {
         success "Transfer completed successfully to ${#successful_receivers[@]} hosts"
         
         # Show transfer statistics
-        if [[ -f "$LOG_DIR/udp-sender.log" ]]; then
+        if [[ -n "$LOG_DIR" && -f "$LOG_DIR/udp-sender.log" ]]; then
             info "Transfer statistics:"
             tail -n 10 "$LOG_DIR/udp-sender.log" | grep -E "(bytes|bitrate|packets)" || true
         fi
