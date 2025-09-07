@@ -71,7 +71,7 @@ EOF
 }
 
 # Parse command line arguments
-BANDWIDTH="900m"  # Conservative for gigabit (leaves headroom)
+BANDWIDTH="200m"  # Very conservative for bridge networks
 DRY_RUN=false
 VERBOSE=false
 IMAGE_FILE=""
@@ -344,13 +344,13 @@ start_sender() {
     sender_cmd+=" --file '$image_file'"
     sender_cmd+=" --portbase $port_base"
     sender_cmd+=" --interface br0"
-    sender_cmd+=" --full-duplex"
+    sender_cmd+=" --half-duplex"
     sender_cmd+=" --max-bitrate $BANDWIDTH"
     sender_cmd+=" --min-receivers $num_receivers"
     sender_cmd+=" --min-wait 10"
     sender_cmd+=" --max-wait 60"
     sender_cmd+=" --retries-until-drop 10"
-    sender_cmd+=" --slice-size 256"  # Optimized for gigabit
+    sender_cmd+=" --slice-size 1024"  # Larger slice for better reliability
     sender_cmd+=" --nokbd"
     
     # Add logging if log directory is available
