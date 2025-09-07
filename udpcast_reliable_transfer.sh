@@ -266,10 +266,16 @@ start_remote_receiver() {
     
     info "Starting UDP receiver on $host"
     
+    # First check if udp-receiver is available on the remote host
+    if ! ssh -o ConnectTimeout="$SSH_TIMEOUT" "$host" "which udp-receiver" >/dev/null 2>&1; then
+        error "udp-receiver not found on $host. Please install udpcast package."
+        return 1
+    fi
+    
     # Build receiver command with high reliability settings
     local receiver_cmd="udp-receiver"
     receiver_cmd+=" --portbase $port_base"
-    receiver_cmd+=" --interface eth0"
+    receiver_cmd+=" --interface br0"
     receiver_cmd+=" --full-duplex"
     receiver_cmd+=" --file '$image_file'"
     receiver_cmd+=" --stat-period 5"
@@ -291,13 +297,17 @@ start_remote_receiver() {
     fi
     
     # Execute receiver in background on remote host
+    if [[ "$VERBOSE" == true ]]; then
+        info "Executing on $host: $receiver_cmd"
+    fi
+    
     ssh -o ConnectTimeout="$SSH_TIMEOUT" "$host" "nohup $receiver_cmd > /tmp/udp-receiver-$host.out 2>&1 &" || {
         error "Failed to start receiver on $host"
         return 1
     }
     
     # Give receiver time to start
-    sleep 2
+    sleep 3
     
     # Verify receiver is running
     if ssh -o ConnectTimeout="$SSH_TIMEOUT" "$host" "pgrep -f udp-receiver" >/dev/null 2>&1; then
@@ -305,6 +315,19 @@ start_remote_receiver() {
         return 0
     else
         error "Failed to verify UDP receiver on $host"
+        
+        # Debug information
+        info "Checking for error messages on $host..."
+        if ssh -o ConnectTimeout="$SSH_TIMEOUT" "$host" "test -f /tmp/udp-receiver-$host.out"; then
+            error "Remote receiver output:"
+            ssh -o ConnectTimeout="$SSH_TIMEOUT" "$host" "cat /tmp/udp-receiver-$host.out" || true
+        fi
+        
+        if ssh -o ConnectTimeout="$SSH_TIMEOUT" "$host" "test -f /tmp/udp-receiver-$host.log"; then
+            error "Remote receiver log:"
+            ssh -o ConnectTimeout="$SSH_TIMEOUT" "$host" "cat /tmp/udp-receiver-$host.log" || true
+        fi
+        
         return 1
     fi
 }
@@ -332,7 +355,7 @@ start_sender() {
     local sender_cmd="udp-sender"
     sender_cmd+=" --file '$image_file'"
     sender_cmd+=" --portbase $port_base"
-    sender_cmd+=" --interface eth0"
+    sender_cmd+=" --interface br0"
     sender_cmd+=" --full-duplex"
     sender_cmd+=" --max-bitrate $BANDWIDTH"
     sender_cmd+=" --min-receivers $num_receivers"
