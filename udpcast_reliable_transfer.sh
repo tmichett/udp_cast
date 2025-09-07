@@ -266,18 +266,9 @@ start_remote_receiver() {
         return 1
     fi
     
-    # Build receiver command with high reliability settings
+    # Build receiver command - keep it simple like the working manual test
     local receiver_cmd="udp-receiver"
-    receiver_cmd+=" --portbase $port_base"
-    receiver_cmd+=" --interface br0"
     receiver_cmd+=" --file '$image_file'"
-    receiver_cmd+=" --stat-period 5000"
-    receiver_cmd+=" --start-timeout $TRANSFER_TIMEOUT"
-    receiver_cmd+=" --receive-timeout $TRANSFER_TIMEOUT"
-    receiver_cmd+=" --sync"
-    
-    # Add logging
-    receiver_cmd+=" --log '/tmp/udp-receiver-$host.log'"
     
     if [[ "$DRY_RUN" == true ]]; then
         info "DRY RUN: Would execute on $host: $receiver_cmd"
@@ -339,18 +330,11 @@ start_sender() {
     
     info "Starting UDP sender for $num_receivers receivers"
     
-    # Build sender command with high reliability settings
+    # Build sender command - keep it simple like the working manual test
     local sender_cmd="udp-sender"
-    sender_cmd+=" --file '$image_file'"
-    sender_cmd+=" --portbase $port_base"
-    sender_cmd+=" --interface br0"
-    sender_cmd+=" --full-duplex"
-    sender_cmd+=" --max-bitrate $BANDWIDTH"
+    sender_cmd+=" '$image_file'"
+    sender_cmd+=" --interface br0" 
     sender_cmd+=" --min-receivers $num_receivers"
-    sender_cmd+=" --min-wait 10"
-    sender_cmd+=" --max-wait 60"
-    sender_cmd+=" --retries-until-drop 10"
-    sender_cmd+=" --slice-size 1024"  # Larger slice for better reliability
     sender_cmd+=" --nokbd"
     
     # Add logging if log directory is available
